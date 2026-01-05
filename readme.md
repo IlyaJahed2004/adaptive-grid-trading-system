@@ -180,17 +180,6 @@ spacing_meta[ticker]
 
 ---
 
-## 7. What Comes Next (Phase 2)
-
-In the next phase, the system will:
-
-- Construct grid price levels using ATR spacing
-- Place buy/sell grid orders
-- Introduce position sizing rules
-- Run the full backtest over the defined period
-
----
-
 ## Summary
 
 Phase 1 ensures that:
@@ -199,3 +188,156 @@ Phase 1 ensures that:
 - The strategy starts from a statistically sound universe
 
 This phase sets the **structural integrity** of the entire grid trading system.
+
+
+
+
+# Phase 2 – Grid Construction, Position Sizing, and Average Price Logic
+
+## Overview
+
+Phase 2 transforms the outputs of Phase 1 into an **operational grid trading structure**.
+While Phase 1 focused on asset selection and volatility estimation, Phase 2 defines **how trades are structured and managed**.
+
+No capital deployment or backtest execution is performed yet.
+This phase only defines **grid mechanics**.
+
+---
+
+## Inputs from Phase 1
+
+Phase 2 relies directly on outputs generated in Phase 1:
+
+| Input | Description |
+|----|----|
+| Selected assets | Assets filtered using EMA200 trend criteria |
+| Grid spacing | ATR-based volatility-adjusted spacing |
+| Last close price | Reference price for grid placement |
+
+These inputs ensure the grid is:
+- Trend-aware
+- Volatility-adaptive
+- Deterministic and reproducible
+
+---
+
+## Phase 2.1 – Grid Buy Level Construction
+
+### Objective
+
+Generate a **fixed number of buy levels** below the current market price.
+
+### Design
+
+- Buy levels are placed **below the current price**
+- The number of levels is fixed (e.g., 10)
+- Distance between levels is defined by ATR-based grid spacing
+
+### Logic
+
+BuyLevel_i = CurrentPrice − i × GridSpacing
+
+
+Where:
+- `i = 1 ... N`
+- `N` = number of grid levels
+
+### Output
+
+- Ordered list of buy price levels
+- Corresponding sell levels (one grid step above each buy)
+
+---
+
+## Phase 2.2 – Exponential Position Sizing (Martingale)
+
+### Objective
+
+Increase position size as price moves lower in the grid.
+
+### Rationale
+
+- Lower prices increase rebound probability
+- Larger size reduces average entry price faster
+
+### Position Sizing Rule
+
+Position sizes follow a geometric progression:
+
+Size_i = BaseSize × Multiplier^i
+
+Example:
+
+[100, 200, 400, 800, ...]
+
+
+This approach is commonly known as **Martingale-style averaging**.
+
+---
+
+## Phase 2.3 – Average Price Calculation of the Active Grid
+
+### Definition of Grid
+
+The grid represents **all executed buy orders** up to the current moment.
+Unfilled buy levels are not part of the grid.
+
+### Objective
+
+Compute the **true average entry price** of the accumulated position.
+
+### Formula
+
+Weighted average price:
+
+\[
+AveragePrice = \frac{\sum (BuyPrice_i × Size_i)}{\sum Size_i}
+\]
+
+### Importance
+
+- Determines profitability thresholds
+- Used for sell decision logic in later phases
+- Reflects actual capital exposure
+
+---
+
+## Key Properties of Phase 2
+
+- Stateless grid definition
+- No look-ahead bias
+- Fully deterministic
+- Modular and testable
+- Ready for integration with execution logic
+
+---
+
+## Outputs of Phase 2
+
+For each asset:
+
+| Output | Description |
+|----|----|
+| Buy levels | Fixed grid buy prices |
+| Sell levels | Exit prices per grid step |
+| Position sizes | Exponential sizing per level |
+| Average price | Dynamic weighted entry price |
+
+These outputs serve as **inputs to Phase 3 execution logic**.
+
+---
+
+## What Comes Next (Phase 3)
+
+Phase 3 will:
+- Simulate order execution
+- Manage active positions
+- Track capital and PnL
+- Perform full backtesting over the selected period
+
+---
+
+## Summary
+
+Phase 2 defines **how the grid behaves**, while Phase 3 will define **how the grid trades**.
+This separation ensures clarity, correctness, and extensibility of the trading system.

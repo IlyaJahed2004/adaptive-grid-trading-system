@@ -327,17 +327,135 @@ These outputs serve as **inputs to Phase 3 execution logic**.
 
 ---
 
-## What Comes Next (Phase 3)
-
-Phase 3 will:
-- Simulate order execution
-- Manage active positions
-- Track capital and PnL
-- Perform full backtesting over the selected period
-
----
 
 ## Summary
 
 Phase 2 defines **how the grid behaves**, while Phase 3 will define **how the grid trades**.
 This separation ensures clarity, correctness, and extensibility of the trading system.
+
+
+# Phase 3 – Multi-Timeframe Grid Strategy Evaluation
+
+## Overview
+
+In this phase, a volatility-adjusted grid trading strategy is evaluated on **real cryptocurrency market data**.
+The objective is to validate the **practical behavior** of the strategy across different market regimes,
+time resolutions, and assets, rather than to optimize parameters.
+
+This phase builds directly on the outputs of Phase 1 (asset selection) and Phase 2 (grid construction).
+
+---
+
+## Strategy Summary
+
+The implemented strategy is a **long-only grid trading system** with the following characteristics:
+
+- Grid levels are placed below a reference price
+- Spacing between levels is derived from market volatility (ATR)
+- Position sizes increase progressively for deeper grid levels
+- Each grid position has its own predefined exit level
+- Global risk is controlled via basket-level take-profit and hard stop-loss rules
+
+The strategy operates in a fully rule-based and deterministic manner.
+
+---
+
+## Data and Assets
+
+- Market data is sourced from Yahoo Finance
+- Asset universe is derived from the top cryptocurrencies by market capitalization
+- Assets are filtered using a long-term trend regime condition (EMA200)
+- Approximately **35–40 symbols** pass the filter and are used in Phase 3
+
+Only assets that satisfy the regime condition prior to the backtest period are included, ensuring no lookahead bias.
+
+---
+
+## Backtest Design
+
+### Time Horizon
+- Full calendar year: **January 2025 – December 2025**
+
+### Evaluation Method
+The backtest is structured as **independent rolling monthly simulations**:
+
+- Each month is treated as a separate experiment
+- Strategy state is reset at the start of every month
+- No information is carried over between months
+
+This design allows the analysis of consistency and robustness over time.
+
+### Timeframes
+The strategy is tested independently on three different time resolutions:
+
+- 1-hour candles
+- 4-hour candles
+- Daily candles
+
+This results in:
+
+- **12 months × 3 timeframes × ~38 assets**
+- Approximately **1,300 individual strategy runs**
+
+---
+
+## Execution Logic (High-Level)
+
+For each monthly run:
+
+- Price evolution is processed sequentially in time
+- Grid buy entries are triggered when price reaches predefined levels
+- Individual positions are closed when their respective sell levels are reached
+- A basket-level take-profit closes all open positions once the weighted average entry price is exceeded by a fixed percentage
+- A hard stop-loss closes all positions if price moves beyond the deepest grid level
+
+The strategy does not assume perfect foresight and only reacts to information available at each candle close.
+
+---
+
+## Logging and Metrics
+
+For each run, the following metrics are recorded:
+
+- Realized profit and loss (PnL)
+- Number of executed trades
+- Whether the month ended via take-profit or stop-loss
+
+Results are then aggregated by timeframe to compute:
+
+- Mean monthly PnL
+- Mean number of trades per month
+- Take-profit frequency
+- Stop-loss occurrence rate
+
+This aggregation provides a concise overview of strategy behavior across resolutions.
+
+---
+
+## Key Observations
+
+- Strategy performance varies meaningfully across timeframes
+- Shorter timeframes generate higher trade frequency and higher average monthly PnL
+- Stop-loss events remain rare across all resolutions, indicating effective volatility-adjusted spacing
+- Results suggest stable behavior rather than overfitting to a single timeframe
+
+These observations indicate that the strategy logic is structurally sound and suitable for further analysis.
+
+---
+
+## Design Notes
+
+- The implementation prioritizes clarity and correctness over complexity
+- No parameter optimization is performed in this phase
+- Certain safety mechanisms (e.g. one-time fill constraints) are intentionally omitted to keep the core logic transparent
+- The framework is designed to be easily extendable toward risk normalization, capital allocation, or live trading simulation
+
+---
+
+## Conclusion
+
+Phase 3 confirms that the grid strategy, when combined with regime filtering and volatility-aware spacing,
+behaves consistently across assets, timeframes, and market conditions.
+
+This phase completes the end-to-end implementation of the strategy on real market data and establishes a
+solid foundation for subsequent optimization or deployment phases.

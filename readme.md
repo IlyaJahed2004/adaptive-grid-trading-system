@@ -1,193 +1,117 @@
-# Phase 1 – Market Universe Selection & Volatility-Based Grid Preparation
+# Phase 1 — Market Universe Selection & Volatility-Aware Grid Construction
 
-## Overview
+This phase builds a robust and lookahead-safe data pipeline for selecting tradable crypto assets and constructing adaptive grid parameters based on market volatility.
 
-This phase builds the **foundation of the grid trading system**.  
-The goal is to construct a *robust and volatility-aware trading universe* before running any grid strategy or backtest.
-
-Phase 1 consists of two main steps:
-
-1. **Market universe selection using EMA200**
-2. **Volatility measurement using ATR to prepare grid spacing**
-
-No trades are executed in this phase.  
-Only **asset selection** and **parameter preparation** are performed.
+The goal of this phase is to prepare a clean and realistic trading universe for the Martingale Grid strategy used in later phases.
 
 ---
 
-## 1. Data Sources
+## Objectives
 
-### CoinMarketCap
-- Used to retrieve the **top cryptocurrencies by market capitalization**
-- Only symbols are extracted
-- Purpose: ensure liquidity and market relevance
-
-### Yahoo Finance
-- Used to download **historical daily OHLC data**
-- Timeframe: Daily candles
-- History starts early enough to avoid indicator warm-up bias
+- Select a tradable universe from the top cryptocurrencies by market capitalization
+- Filter assets using a long-term trend regime (EMA200)
+- Remove all forms of lookahead bias
+- Compute volatility-aware grid spacing using ATR
+- Store clean historical data for multi-timeframe backtesting
 
 ---
 
-## 2. Time Configuration
+## Data Source
 
-| Parameter | Description |
-|--------|------------|
-| `HISTORY_START` | Start date for historical data (indicator warm-up) |
-| `BACKTEST_START` | First day of the backtest period |
-| `BACKTEST_END` | Last day of the backtest period |
-
-All timestamps are converted to **UTC** to prevent timezone comparison errors.
+- Market universe is obtained from **CoinMarketCap API** (Top 70 coins by market cap)
+- Historical OHLC data is fetched from **Yahoo Finance (yfinance)**
+- All timestamps are standardized to **UTC timezone**
 
 ---
 
-## 3. Phase 1.1 – EMA200-Based Asset Selection
+## Backtest Window
 
-### Motivation
+- **Backtest period:**  
+  `2025-01-01 → 2025-12-31`
 
-Grid strategies perform better in **structurally strong markets**.  
-EMA200 is used as a long-term trend filter to exclude weak or sideways assets.
-
----
-
-### EMA200 Rule
-
-For each cryptocurrency:
-
-1. Compute **EMA200** using *only pre-backtest data*
-2. Count how many daily closes are **above EMA200**
-3. Calculate the ratio:
-
-ratio = (number of closes above EMA200) / (total pre-backtest closes)
+- **Historical preload period:**  
+  `2023-01-01 → 2024-12-31`  
+  (used for indicator computation and regime filtering)
 
 ---
 
-### Selection Criterion
+## Step 1 — Market Universe Construction
 
-Asset is selected if:
+1. Fetch top 70 cryptocurrencies by market capitalization.
+2. Download full daily OHLC history for each asset.
+3. Store full historical data in a dictionary for later use in Phase 3.
 
-ratio > 0.5
-
-
-Meaning:
-- The asset spent **more than 50% of the time above EMA200**
-- Indicates long-term bullish or structurally strong behavior
+Assets with missing or invalid price data are automatically discarded.
 
 ---
 
-### Why This Works
+## Step 2 — Regime Filter using EMA200
 
-- Avoids single-day confirmation bias
-- Uses *distribution over time*, not one snapshot
-- Prevents look-ahead bias
-- Filters out unstable or weak markets
+A long-only grid strategy performs best in bullish or trending markets.  
+To ensure we only trade in favorable regimes, an EMA200 filter is applied.
 
----
+For each asset:
 
-### Output of EMA Phase
+- EMA200 is computed **only on pre-backtest data**
+- The fraction of daily closes above EMA200 is measured
+- Assets are kept only if more than **60% of closes were above EMA200**
 
-- A list of selected tickers (`selected`)
-- A dictionary of full historical data (`main_dict`)
-- Exactly **50 assets** (when available)
+This ensures the strategy operates only on structurally strong assets.
 
 ---
 
-## 4. Phase 1.2 – Volatility Measurement Using ATR
+## Step 3 — Volatility-Aware Grid Spacing (ATR)
 
-### Why ATR?
+Instead of using a fixed grid size, spacing is derived from real market volatility.
 
-Grid spacing must adapt to market volatility.
+For each selected asset:
 
-- Low volatility → tight grid
-- High volatility → wide grid
+- ATR(14) is computed on pre-backtest data
+- Grid spacing is defined as:
 
-ATR (Average True Range) measures **how much price typically moves**, independent of direction.
-
----
-
-### ATR Calculation
-
-ATR is computed using standard True Range (TR):
-
-TR = max(
-High − Low,
-|High − Previous Close|,
-|Low − Previous Close|
-)
-
-ATR is then defined as:
-
-ATR = rolling mean of TR over N periods
+grid_spacing = ATR × GRID_MULTIPLIER
 
 
-Where:
-- `N = 14` (standard choice)
+- Grid spacing is also stored as a percentage of price for normalization
 
-Only **pre-backtest data** is used to avoid future leakage.
+This makes the grid adaptive to each asset’s volatility profile.
 
 ---
 
-### Grid Spacing Formula
+## Key Design Principles
 
+- **No Lookahead Bias**  
+  All indicators are computed strictly before the backtest window.
 
-Parameters:
-- `ATR_PERIOD = 14`
-- `GRID_MULTIPLIER = 1.0` (tunable)
+- **Volatility Adaptation**  
+  Each asset has its own grid size based on real volatility.
 
-The spacing is also expressed as a **percentage of the last close** for normalization.
+- **Clean Market Regime Filter**  
+  The strategy operates only in bullish environments.
 
----
-
-### Example
-
-If:
-- ATR(14) = 120 USD
-- Multiplier = 1.0
-
-Then:
-
-Grid Spacing = 120 USD
-
-
-Each grid level will be separated by 120 USD.
+- **Reusable Data Pipeline**  
+  All historical data is stored for later multi-timeframe backtesting.
 
 ---
 
-## 5. Outputs of Phase 1
+## Output Artifacts
 
-For each selected asset, the following are produced:
+At the end of Phase 1, the pipeline produces:
 
-| Field | Description |
-|----|----|
-| `last_atr` | Latest ATR value (pre-backtest) |
-| `grid_spacing` | Absolute grid distance |
-| `grid_spacing_pct` | Grid distance as % of price |
-| `last_close` | Reference close price |
+- A filtered trading universe (EMA200 regime filter)
+- Historical OHLC data for each asset
+- ATR-based grid spacing metadata for each asset
 
-These values are stored in:
-
-spacing_meta[ticker]
-
-
----
-
-## 6. Design Principles
-
-- No look-ahead bias
-- Volatility-aware parameterization
-- Clean separation between selection and execution
-- Fully reproducible and deterministic
+These outputs are consumed directly by Phase 2 (grid construction) and Phase 3 (strategy backtesting).
 
 ---
 
 ## Summary
 
-Phase 1 ensures that:
-- Only strong, liquid markets are traded
-- Grid spacing adapts dynamically to market conditions
-- The strategy starts from a statistically sound universe
+Phase 1 establishes a professional-grade market data pipeline and asset selection process.  
+It ensures that all subsequent strategy evaluation is performed on realistic, bias-free, and volatility-aware data.
 
-This phase sets the **structural integrity** of the entire grid trading system.
+This phase forms the backbone of the entire trading system.
 
 
 

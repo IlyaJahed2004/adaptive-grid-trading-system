@@ -214,9 +214,8 @@ Compute the **true average entry price** of the accumulated position.
 
 Weighted average price:
 
-\[
-AveragePrice = \frac{\sum (BuyPrice_i × Size_i)}{\sum Size_i}
-\]
+
+AveragePrice=∑Sizei​∑(BuyPricei​×Sizei​)​
 
 ### Importance
 
@@ -256,6 +255,15 @@ These outputs serve as **inputs to Phase 3 execution logic**.
 
 Phase 2 defines **how the grid behaves**, while Phase 3 will define **how the grid trades**.
 This separation ensures clarity, correctness, and extensibility of the trading system.
+
+
+## Logging & Debugging (VERBOSE) -> related to all of the phases
+
+Add a short controlled-logging section describing how VERBOSE is used so maintainers and reviewers know where to toggle debug prints.
+
+Purpose
+
+Provide a simple, global toggle for conditional debug output during development and troubleshooting without affecting production/backtest results.
 
 
 # Phase 3 – Multi-Timeframe Grid Strategy Evaluation

@@ -93,7 +93,7 @@ $$ WAP_t = \frac{\sum_{i=0}^{k} (Price_i \times Volume_i)}{\sum_{i=0}^{k} Volume
 
 
 
-## 🔹 Phase 3: The Execution Engine
+## 🔹 Phase 3: The Execution Engine (Martingale)
 
 Phase 3 is the dynamic simulation. It runs a **State Machine** over historical data (`1D`, `4H`, `1H`) to execute trades, manage wallet balances, and track equity.
 
@@ -111,7 +111,7 @@ The engine checks three conditions in specific order of priority:
 1.  **Check Stop Loss (Hard Risk Control):**
     *   **Trigger:** If $Low_{candle} \le Level_{Max}$ (e.g., Level 10).
     *   **Action:** **Market Sell** ALL holdings immediately.
-    *   **Result:** Realize loss, disable grid for the remainder of the month (Capital Preservation Mode).
+    *   **Result:** Realize loss, reset grid state (Ready to re-enter new cycle).
 
 2.  **Check Take Profit (Basket Exit):**
     *   **Trigger:** If $High_{candle} \ge WAP \times (1 + 0.025)$ (Target is WAP + 2.5%).
@@ -121,17 +121,53 @@ The engine checks three conditions in specific order of priority:
 
 3.  **Check Safety Orders (DCA):**
     *   **Trigger:** If $Low_{candle} \le Next\_Level\_Price$.
-    *   **Mechanism:** Uses **Limit Order** logic. We assume the order filled at the specific grid level price, not the candle close.
-    *   **Action:** Buy the calculated Martingale size. Update $WAP$. Update Holdings.
+    *   **Mechanism:** Uses **Limit Order** logic. We assume the order filled at the specific grid level price.
+    *   **Action:** Buy the calculated Martingale size ($Volume \times 1.5^n$). Update $WAP$. Update Holdings.
 
 ### 2. Multi-Timeframe Batching
 To ensure high-fidelity testing without memory overflows:
-*   **1D Data:** Pre-loaded for the entire year (used for ATR/EMA calculations).
+*   **1D Data:** Pre-loaded for the entire year.
 *   **Intraday (1H/4H):** Fetched dynamically **Month-by-Month**.
-    *   The engine downloads Jan 2025 (1H), runs the sim, saves results, clears memory, then downloads Feb 2025.
 
-### 3. Capital Management
-*   **Equity Tracking:** $Equity = Cash + (Holdings \times ClosePrice)$.
-*   **ROI Calculation:** Returns are calculated based on the starting capital ($10,000) vs final equity.
+### 3. Data Persistence (Optimization for Phase 5)
+Instead of storing only the final ROI, the engine now utilizes a **Nested Dictionary Structure** to preserve the entire path of the simulation:
+*   **Structure:** `all_equity_curves[Ticker][Timeframe][Month_Label]`
+*   **Purpose:** This allows Phase 5 to calculate advanced metrics (Sharpe Ratio, Sortino, MDD) and plot visualizations without re-running the heavy simulation loops.
 
----
+
+
+
+## 🔹 Phase 4: The Anti-Martingale Engine (Pyramiding)
+
+Phase 4 flips the logic of Phase 3. Instead of buying when the price drops (DCA), this strategy focuses on **Trend Following** and **Pyramiding**. It adds to the position only when the price moves *in favor* of the trade.
+
+### 1. The Strategy Logic
+The goal is to maximize gains during strong trends ("Ride the Wave") while keeping risk tight via a trailing stop effect.
+
+#### A. Entry Mechanics
+*   **Base Order:** Enters at Market Price when the grid is inactive.
+*   **Trigger for Add-on:** A new buy order is placed ONLY if the price rises by a specific `spacing_pct` (Dynamic based on ATR).
+
+#### B. Execution Logic (State Machine)
+Once active, the engine monitors:
+
+1.  **Take Profit (Momentum Exit):**
+    *   **Trigger:** If $High_{candle} \ge WAP \times (1 + 0.025)$.
+    *   **Action:** Sell entire position. Secure profit.
+
+2.  **Stop Loss (Trailing Protection):**
+    *   **Trigger:** If $Low_{candle} \le WAP \times (1 - 2 \times Spacing)$.
+    *   **Dynamic Nature:** Since we buy at higher prices (Pyramiding), the Weighted Average Price ($WAP$) constantly increases. Therefore, the Stop Loss level naturally moves up, acting as a **Trailing Stop**.
+
+3.  **Pyramiding (Adding to Winners):**
+    *   **Condition:** If $High_{candle} \ge Next\_Buy\_Trigger$.
+    *   **Volume Sizing:** Uses the Martingale Multiplier ($1.5^n$) but applies it on the way **UP**. This is aggressive position sizing during a breakout.
+    *   **Constraint:** Max safety orders limited to 8 levels to prevent over-exposure at market tops.
+
+### 2. Data Persistence Strategy
+To prevent naming conflicts with Phase 3 and ensure data integrity for analysis:
+*   **Storage Container:** `antimartingale_equity_curves`
+*   **Structure:** `[Ticker] -> [Timeframe] -> [Month]`
+*   **Usage:** This separated store ensures that when we visualize data in Phase 5, we can overlay or compare the "Dip Buying" (Martingale) vs. "Trend Following" (Anti-Martingale) performance curves directly.
+
+
